@@ -1,6 +1,25 @@
-## LAB: K8s Cluster Setup with Kubeadm and Containerd 
+## LAB: K8s Cluster Setup with Kubeadm and Containerd
 
 This scenario shows how to create K8s cluster on virtual PC (multipass, kubeadm, containerd)
+
+### Prerequisites on macOS Host Machine
+
+Before creating the Kubernetes cluster, install the required tools on your macOS machine:
+
+```bash
+# Install Homebrew (if not already installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install required tools
+brew install samba
+brew tap hashicorp/tap
+brew install hashicorp/tap/hashicorp-vagrant
+brew install --cask multipass
+
+# Verify installations
+multipass version
+vagrant version
+```
 
 **Easy way to create K8s Cluster with Ubuntu (Control-Plane, Workers) and Windows Servers:**
 
@@ -53,23 +72,60 @@ This scenario shows how to create K8s cluster on virtual PC (multipass, kubeadm,
 - Fast to install and to use.
 - **Link:** https://multipass.run/
 
-``` 
-# creating master, worker1
-# -c => cpu, -m => memory, -d => disk space
-multipass launch --name master -c 2 -m 2G -d 10G   
-multipass launch --name worker1 -c 2 -m 2G -d 10G
-``` 
+```bash
+# Create control plane node (using Ubuntu 22.04 LTS)
+multipass launch --name k8s-control-plane \
+  --cpus 2 --memory 2G --disk 5G 22.04
+
+# Verify the instance is running
+multipass list | grep -e '^Name' -e k8s-control-plane
+```
 
 ![image](https://user-images.githubusercontent.com/10358317/156150337-2f4b3ac9-df42-4567-a848-6869362a3001.png)
 
-``` 
-# get shell on master 
-multipass shell master
-# get shell on worker1
-multipass shell worker1
-``` 
+```bash
+# Get shell access to control plane
+multipass shell k8s-control-plane
+```
+
+To create additional worker nodes:
+
+```bash
+# Create worker node
+multipass launch --name k8s-worker-node --cpus 2 --memory 2G --disk 5G 22.04
+
+# Get shell access to worker node
+multipass shell k8s-worker-node
+```
 
 ![image](https://user-images.githubusercontent.com/10358317/156150843-db217ba0-8fff-4a77-9f3d-09f9f71314df.png)
+
+#### 1.1.1 Install kubectl on macOS Host <a name="installkubectlmacos"></a>
+
+To manage your Kubernetes cluster from your macOS machine, install kubectl:
+
+```bash
+# Download and install kubectl
+curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/darwin/arm64/kubectl
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+
+# Verify installation
+kubectl version --client
+```
+
+To access your cluster from macOS:
+
+```bash
+# Create kubeconfig directory
+mkdir -p ~/.kube/
+
+# Copy config from control plane VM to host
+multipass transfer k8s-control-plane:/home/ubuntu/.kube/config ~/.kube/multipass-admin.conf
+
+# Use kubectl with the config
+kubectl get nodes --kubeconfig ~/.kube/multipass-admin.conf
+```
 
 #### 1.2 IP-Tables Bridged Traffic Configuration <a name="ip-tables"></a>
 
@@ -169,15 +225,37 @@ sudo systemctl restart containerd
 ![image](https://user-images.githubusercontent.com/10358317/156160102-ce0437a8-1054-46ab-b79d-47527d4462e3.png)
 
 #### 1.4 Install KubeAdm <a name="installkubeadm"></a>
-- Run on ALL nodes: 
-``` 
-sudo apt-get update
-sudo apt-get install -y apt-transport-https ca-certificates curl
-sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
-echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-sudo apt-get update
-sudo apt-get install -y kubelet kubeadm kubectl
-sudo apt-mark hold kubelet kubeadm kubectl
+
+**Note:** The old Kubernetes repository URL may return 404 errors. Use the updated repository configuration as shown below.
+
+- Run on ALL nodes:
+
+```bash
+# Download and run the automated setup script (recommended)
+wget https://raw.githubusercontent.com/yukinakanaka/kubernetes-on-apple-silicon-with-multipass/main/setup.sh
+chmod +x setup.sh
+./setup.sh
+```
+
+If you prefer manual installation or encounter issues with the script:
+
+```bash
+# Manual installation (alternative approach)
+sudo mkdir -p /etc/apt/keyrings
+
+# Add Kubernetes repository key
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes.gpg
+
+# Add Kubernetes repository
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] \
+https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /" \
+| sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+# Install Kubernetes components
+sudo apt update
+sudo apt install -y kubelet kubeadm kubectl cri-tools
+sudo apt-mark hold kubelet kubeadm kubectl cri-tools
 ```
 
 ![image](https://user-images.githubusercontent.com/10358317/156160934-11c45c68-a5e5-46fd-bde7-96301277b906.png)
@@ -250,17 +328,24 @@ sudo kubeadm join 172.31.45.74:6443 --token w7nntd.7t6qg4cd418wzkup \
 
 #### 1.6 Install Kubernetes Network Infrastructure <a name="network"></a>
 
-- Calico is used for network plugin on K8s. Others (flannel, weave) could be also used. 
-- Run only on Master, in our examples, we are using Calico instead of Flannel: 
-  - Calico:
-  ```
-  kubectl create -f https://docs.projectcalico.org/manifests/tigera-operator.yaml
-  kubectl create -f https://docs.projectcalico.org/manifests/custom-resources.yaml
-  ```
-  - Flannel:
-  ```
-  kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-  ```
+- Container Network Interface (CNI) plugins provide networking and network policy for Kubernetes clusters.
+- Common options include Calico, Flannel, and Weave Net.
+- For this setup, we'll use Flannel which is simpler for basic networking:
+
+```bash
+# Apply Flannel CNI plugin (run on control plane)
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+```
+
+**Alternative: Using Calico (more advanced networking features)**
+
+If you prefer Calico for its advanced networking features:
+
+```bash
+# Apply Calico CNI plugin
+kubectl create -f https://docs.projectcalico.org/manifests/tigera-operator.yaml
+kubectl create -f https://docs.projectcalico.org/manifests/custom-resources.yaml
+```
 
 ![image](https://user-images.githubusercontent.com/10358317/156164127-d21ff5be-35d6-4ec6-a507-2ae0155031ac.png)
 
@@ -272,7 +357,27 @@ sudo kubeadm join 172.31.45.74:6443 --token w7nntd.7t6qg4cd418wzkup \
 
 ![image](https://user-images.githubusercontent.com/10358317/156165250-f1647540-467a-445d-8381-dd320922a70d.png)
 
-##### 1.6.1 If You have Windows Node to add your Cluster:
+#### 1.7 Testing Your Cluster <a name="testing"></a>
+
+Once your cluster is set up and the network plugin is installed, verify everything is working:
+
+```bash
+# Check node status (run on control plane)
+kubectl get nodes
+
+# Deploy a test nginx pod
+kubectl run test-nginx --image=nginx --restart=Never
+
+# Check pod status
+kubectl get pods -o wide
+
+# Clean up test pod when done
+kubectl delete pod test-nginx
+```
+
+Your cluster should show all nodes as "Ready" and the test pod should be running successfully.
+
+##### 1.7.1 If You have Windows Node to add your Cluster:
 
 - Instead of running it as above, you should run Calico with this way, run on Master node:
 ```

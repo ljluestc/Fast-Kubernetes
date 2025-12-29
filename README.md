@@ -7,7 +7,7 @@ This repo covers Kubernetes objects' and components' details (Kubectl, Pod, Depl
 
 **Keywords:** Containerization, Kubernetes, Kubectl, Pod, Deployment, Service, ConfigMap, ReplicaSet, Volume, Cheatsheet.
 
-**Note:** K8s objects and objects feature can be updated/changed in time. While creating this repo, the version of K8s was v1.22.3. Some sections are trying to be kept up to date. Especially [Creating K8s Cluster with Kubeadm and Containerd](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Kubeadm-Cluster-Setup.md).
+**Note:** K8s objects and objects feature can be updated/changed in time. This documentation has been updated to reflect Kubernetes v1.29.x with containerd runtime and Flannel networking. Latest tested setup uses [Creating K8s Cluster with Kubeadm and Containerd](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Kubeadm-Cluster-Setup.md).
 
 # Quick Look (HowTo): Scenarios - Hands-on LAB
 - [LAB: K8s Creating Pod - Imperative Way](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-CreatingPod-Imperative.md)
