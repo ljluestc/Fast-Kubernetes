@@ -4,12 +4,17 @@ This scenario shows:
 - how to create basic K8s pod using yaml file,
 - how to get more information about pod (to solve troubleshooting),
 
+### Prerequisites
+
+#### For Minikube Clusters:
+- Start minikube: `minikube start`
+
+#### For Multipass/Kubeadm Clusters:
+- Ensure your cluster is running: `multipass list`
+- Set kubectl config: `export KUBECONFIG=~/.kube/multipass-admin.conf`
+- Verify connection: `kubectl get nodes`
 
 ### Steps
-
-- Run minikube  (in this scenario, K8s runs on WSL2- Ubuntu 20.04) ("minikube start")
-
-  ![image](https://user-images.githubusercontent.com/10358317/153183333-371fe598-d5a4-4b86-9b5d-9e33f35063cc.png)
   
 - Create Yaml file (pod1.yaml) in your directory and copy the below definition into the file:
 - File: https://github.com/omerbsezer/Fast-Kubernetes/blob/main/labs/pod/pod1.yaml 
@@ -35,8 +40,12 @@ spec:
 ![image](https://user-images.githubusercontent.com/10358317/153674646-8997eb99-12b9-4394-91f2-2de4032ee3db.png)
 
 
- - Apply/run the file to create pod in declerative way ("kubectl apply -f pod1.yaml"):
-   
+ - Apply/run the file to create pod in declarative way:
+   ```bash
+   kubectl apply -f pod1.yaml
+   kubectl get pods -o wide
+   ```
+
    ![image](https://user-images.githubusercontent.com/10358317/153198471-55d92940-1141-4e04-a701-6356daaf0181.png)
   
 - Describe firstpod ("kubectl describe pods firstpod"):
@@ -47,7 +56,14 @@ spec:
 
   ![image](https://user-images.githubusercontent.com/10358317/153200081-3f7823a8-e5d0-4143-aac4-157948fe2a61.png)
   
- - If you want to delete minikube  ("minikube delete"):
-   
-   ![image](https://user-images.githubusercontent.com/10358317/153200584-01971754-0739-4c8f-8446-d2d3ab5bed31.png)
+### Cleanup
+
+To delete the pod:
+```bash
+kubectl delete -f pod1.yaml
+```
+
+To stop clusters:
+- **Minikube:** `minikube delete`
+- **Multipass:** `multipass stop k8s-control-plane k8s-worker-node`
 
