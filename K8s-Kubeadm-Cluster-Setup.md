@@ -52,6 +52,8 @@ vagrant version
   - [Install KubeAdm](#installkubeadm)
   - [Install Kubernetes Cluster](#installkubernetes)
   - [Install Kubernetes Network Infrastructure](#network)
+  - [Testing Your Cluster](#testing)
+  - [Troubleshooting Multipass Networking Issues](#multipass-troubleshooting)
   - [(Optional) If you need Windows Node: Creating Windows Node](#creatingWindows)
 - [Joining New K8s Worker Node to Existing Cluster](#joining)
   - [Brute-Force Method](#bruteforce)
@@ -376,6 +378,89 @@ kubectl delete pod test-nginx
 ```
 
 Your cluster should show all nodes as "Ready" and the test pod should be running successfully.
+
+#### 1.8 Troubleshooting Multipass Networking Issues <a name="multipass-troubleshooting"></a>
+
+**CRITICAL:** If you experience connectivity issues, check if it's a Multipass networking problem first.
+
+##### 🚨 Key Signal: SSH Timeout to VM
+
+If `multipass shell k8s-control-plane` fails with:
+```
+shell failed: ssh connection failed: 'Timeout connecting to 192.168.64.2'
+```
+
+**This is NOT a Kubernetes problem** - it's a Multipass VM networking failure.
+
+##### Common Causes (macOS)
+- Mac sleep/wake cycle
+- Network changes (Wi-Fi ↔ Ethernet)
+- VPN enabled/disabled
+- Long-running VM with idle network
+- Hypervisor.framework NAT bugs
+
+##### ✅ CORRECT FIX (Do in Order)
+
+**Step 1: Check VM State**
+```bash
+multipass list
+```
+Look for `k8s-control-plane` → Running (but unreachable) or Unknown.
+
+**Step 2: Hard Restart VM**
+```bash
+multipass stop k8s-control-plane
+multipass start k8s-control-plane
+```
+Wait 30 seconds, then test:
+```bash
+multipass shell k8s-control-plane
+```
+
+**Step 3: If Restart Fails → Reboot Multipass Daemon**
+```bash
+sudo pkill multipassd
+open -a Multipass
+multipass start k8s-control-plane
+multipass shell k8s-control-plane
+```
+
+**Step 4: Verify Kubernetes (inside VM)**
+```bash
+kubectl get nodes
+```
+Should show both nodes as Ready.
+
+**Step 5: Test from macOS**
+```bash
+kubectl get pods
+kubectl get configmaps
+```
+
+##### 🚫 What WON'T Fix This
+- `--validate=false`
+- Reinstalling kubectl
+- Editing YAML files
+- Restarting pods
+- Recreating ConfigMaps
+
+##### 🧪 Nuclear Option (Only if restart fails)
+```bash
+multipass delete k8s-control-plane --purge
+multipass delete k8s-worker-node --purge
+# Then recreate VMs and rerun setup
+```
+
+##### 🧠 Interview-Level Takeaway
+When **both kubectl AND SSH fail**, the problem is **virtualization/networking**, not Kubernetes.
+
+##### Symptoms of Multipass Networking Failure
+| Symptom | Meaning |
+|---------|---------|
+| `kubectl get pods` → TLS timeout | API server unreachable |
+| `multipass shell` → SSH timeout | VM network is down |
+| `192.168.64.2` unreachable | Multipass bridge/NAT broken |
+| `kubectl cluster-info` works sometimes | Cached output / partial success |
 
 ##### 1.7.1 If You have Windows Node to add your Cluster:
 

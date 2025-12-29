@@ -1031,8 +1031,10 @@ sensible-browser http://127.0.0.1:45771/api/v1/namespaces/kubernetes-dashboard/s
 **Goto:** [Helm Commands Cheatsheet](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/HelmCheatsheet.md)
 
 ## Kubernetes Cluster Setup: Kubeadm, Containerd, Multipass <a name="cluster_setup"></a>
-    
-**Goto:** [LAB: K8s Kubeadm Cluster Setup](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Kubeadm-Cluster-Setup.md) 
+
+**Goto:** [LAB: K8s Kubeadm Cluster Setup](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Kubeadm-Cluster-Setup.md)
+
+**🚨 Critical Troubleshooting:** If you experience connectivity issues, check [Multipass Networking Troubleshooting](#multipass-troubleshooting) first. SSH timeouts indicate VM networking problems, not Kubernetes issues. 
     
 ## Monitoring Kubernetes Cluster with SSH, Prometheus and Grafana <a name="prometheus_grafana"></a>
        
