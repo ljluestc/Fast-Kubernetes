@@ -211,9 +211,11 @@ For learning K8s and running on a computer, **Kubectl and Minikube** are enough 
         3. Never: It never restarts in any case.
  - **Successed (completed)**: If the container closes successfully without error and restart policy is configured as on-failure/never, it converts to succeed.
  - **Failed**
- - **CrashLoopBackOff:** 
+ - **CrashLoopBackOff:**
     - If restart policy is configured as always and container closes again and again, container restarts again and again (Restart waiting duration before restarting again: 10 sec -> 20 sec -> 40 sec -> .. -> 5mins), It runs every 5 mins if the pod is crashed.
     - If container runs more than 10 mins, status converted from 'CrashLoopBackOff' to 'Running'.
+    - **Real Example:** `kubectl run crash-test --image=busybox --restart=Always --command -- sh -c "echo CRASHING; sleep 1; exit 1"`
+    - **Debug:** `kubectl logs crash-test --previous` to see crash logs
 
 ### MultiContainer Pod, Init Container <a name="multicontainerpod"></a>
 - Best Practice: 1 Container runs in 1 Pod normally, because the smallest element in K8s is Pod (Pod can be scaled up/down).

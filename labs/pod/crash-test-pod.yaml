@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crash-test-pod
+  labels:
+    app: crash-demo
+spec:
+  restartPolicy: Always  # Will cause CrashLoopBackOff on failure
+  containers:
+  - name: crash-container
+    image: busybox:latest
+    command: ["sh", "-c"]
+    args: ["echo 'Starting container...'; sleep 2; echo 'Exiting with error'; exit 1"]

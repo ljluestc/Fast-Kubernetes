@@ -38,6 +38,18 @@ This scenario shows:
   kubectl get pods -o wide
   ```
 
+  **Examples of different restart policies:**
+  ```bash
+  # Never restart (good for testing)
+  kubectl run test-pod --image=busybox --restart=Never --command -- echo "Hello"
+
+  # Always restart (default behavior)
+  kubectl run crash-test --image=busybox --restart=Always --command -- sh -c "echo CRASHING; sleep 1; exit 1"
+
+  # Restart only on failure
+  kubectl run success-pod --image=busybox --restart=OnFailure --command -- echo "Success"
+  ```
+
   ![image](https://user-images.githubusercontent.com/10358317/153183932-f8cd1547-3b10-47af-be3a-a1aedbfcf4ad.png)
 
 - Describe pod to get mor information about pods (when encountered troubleshooting):
@@ -96,6 +108,31 @@ The connection to the server localhost:8080 was refused - did you specify the ri
 1. Start minikube: `minikube start`
 2. Verify kubectl context: `kubectl config current-context`
 
+#### Pod Lifecycle Issues
+
+**CrashLoopBackOff:**
+When a pod fails repeatedly, it enters CrashLoopBackOff state. The restart interval increases exponentially (10s → 20s → 40s → 5min max).
+
+Example of a crashing pod:
+```bash
+kubectl run crash-test --image=busybox --restart=Always --command -- sh -c "echo CRASHING; sleep 1; exit 1"
+kubectl get pods  # Shows CrashLoopBackOff status
+kubectl describe pod crash-test  # Shows restart history
+kubectl logs crash-test --previous  # Shows crash logs
+```
+
+**Container States:**
+- **Pending**: Pod accepted but not yet scheduled
+- **ContainerCreating**: Image being pulled/downloaded
+- **Running**: Pod successfully started
+- **CrashLoopBackOff**: Container failing repeatedly
+- **Completed**: Container finished successfully (for jobs/batches)
+
+**Pod Readiness:**
+- Use `kubectl describe pod <name>` to see detailed status
+- Check Events section for scheduling failures
+- Use `kubectl logs <pod> --previous` for crashed container logs
+
 #### Pod Issues
 - **Pod not starting:** Check pod status with `kubectl describe pod podName`
 - **Image pull errors:** Verify image name and registry access
@@ -103,9 +140,21 @@ The connection to the server localhost:8080 was refused - did you specify the ri
 
 ### Best Practices
 
-- Use `--restart=Never` for testing pods to prevent automatic restarts
-- Always check pod logs with `kubectl logs podName` for debugging
-- Use labels for better pod management: `kubectl run mypod --image=nginx --labels="app=web,env=test"`
+- **Use appropriate restart policies:**
+  - `--restart=Never`: For testing/debugging (pod won't restart)
+  - `--restart=Always`: For long-running services (default)
+  - `--restart=OnFailure`: For batch jobs that should retry on failure
+
+- **Always check pod status:** `kubectl get pods -o wide`
+- **Debug with describe:** `kubectl describe pod <name>` shows events and status
+- **Check logs properly:**
+  - `kubectl logs <pod>`: Current logs
+  - `kubectl logs <pod> --previous`: Logs from crashed containers
+  - `kubectl logs -f <pod>`: Follow logs in real-time
+
+- **Use meaningful labels:** `kubectl run mypod --image=nginx --labels="app=web,env=test"`
+- **Test with simple commands first:** Start with `kubectl run test --image=busybox --command -- echo "hello"`
+- **Clean up test pods:** `kubectl delete pod <name>` or `kubectl delete pods --selector app=test`
 
 ### Next Steps
 
