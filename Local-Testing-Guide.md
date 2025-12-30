@@ -9,6 +9,13 @@ This guide provides comprehensive instructions for testing Kubernetes locally us
 - kubectl installed on macOS
 - Basic understanding of kubectl commands
 
+### Quick Health Check
+```bash
+# Run automated cluster test
+./test-cluster.sh
+```
+This script verifies kubectl config, node status, pod creation, and CNI health.
+
 ### Cluster Setup Verification
 ```bash
 # Check VMs are running
