@@ -28,6 +28,7 @@ This repo covers Kubernetes objects' and components' details (Kubectl, Pod, Depl
 - [LAB: K8s Cron Job](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-CronJob.md)
 - [LAB: K8s Ingress](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Ingress.md)
 - [LAB: Helm Install & Usage](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/Helm.md)
+- [Local Testing Guide: Multipass + kubectl](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/Local-Testing-Guide.md)
 - [LAB: K8s Cluster Setup with Kubeadm and Containerd](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Kubeadm-Cluster-Setup.md)
 - [LAB: K8s Cluster Setup with Kubeadm and Docker](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Kubeadm-Cluster-Docker.md)
 - [LAB: Helm-Jenkins on running K8s Cluster (2 Node Multipass VM)](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Helm-Jenkins.md)
@@ -71,6 +72,7 @@ This repo covers Kubernetes objects' and components' details (Kubectl, Pod, Depl
 - [Helm: Kuberbetes Package Manager](#helm)
 - [Kubernetes Commands Cheatsheet](#cheatsheet)
 - [Helm Commands Cheatsheet](#helm_cheatsheet)
+- [Local Testing Guide: Multipass + kubectl](#local_testing)
 - [Kubernetes Cluster Setup: Kubeadm, Containerd, Multipass](#cluster_setup)
 - [Monitoring Kubernetes Cluster with SSH, Prometheus and Grafana](#prometheus_grafana)
 - [Other Useful Resources Related Kubernetes](#resource)
@@ -1034,7 +1036,197 @@ sensible-browser http://127.0.0.1:45771/api/v1/namespaces/kubernetes-dashboard/s
 
 **Goto:** [LAB: K8s Kubeadm Cluster Setup](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/K8s-Kubeadm-Cluster-Setup.md)
 
-**🚨 Critical Troubleshooting:** If you experience connectivity issues, check [Multipass Networking Troubleshooting](#multipass-troubleshooting) first. SSH timeouts indicate VM networking problems, not Kubernetes issues. 
+**🚨 Critical Troubleshooting:** If you experience connectivity issues, check [Multipass Networking Troubleshooting](#multipass-troubleshooting) first. SSH timeouts indicate VM networking problems, not Kubernetes issues.
+
+## Local Testing Guide: Multipass + kubectl <a name="local_testing"></a>
+
+### Prerequisites for Local Testing
+
+#### 1. Multipass Cluster Setup
+- Control plane: `k8s-control-plane` (IP: 192.168.64.2)
+- Worker node: `k8s-worker-node` (IP: 192.168.64.3)
+- CNI: Flannel
+- Kubernetes: v1.29.15
+
+#### 2. kubectl Configuration (CRITICAL)
+```bash
+# Set kubeconfig (REQUIRED for all kubectl commands)
+export KUBECONFIG=~/.kube/multipass-admin.conf
+
+# Make permanent
+echo 'export KUBECONFIG=~/.kube/multipass-admin.conf' >> ~/.zshrc
+source ~/.zshrc
+
+# Verify connection
+kubectl get nodes
+kubectl cluster-info
+```
+
+**🚨 Common Issue:** If you see `localhost:8080 was refused`, you forgot to set KUBECONFIG.
+
+### Pod Lifecycle Testing
+
+#### 1. Basic Pod Creation & Management
+```bash
+# Create test pod
+kubectl run test-nginx --image=nginx --restart=Never
+kubectl get pods -o wide
+
+# Describe pod (debugging)
+kubectl describe pod test-nginx
+
+# Check logs
+kubectl logs test-nginx
+
+# Execute commands
+kubectl exec test-nginx -- ls /usr/share/nginx/html
+kubectl exec -it test-nginx -- sh
+
+# Delete pod
+kubectl delete pod test-nginx
+```
+
+#### 2. CrashLoopBackOff Testing
+```bash
+# Create pod that always fails
+kubectl run crash-test --image=busybox --restart=Always \
+  --command -- sh -c "echo CRASHING; sleep 1; exit 1"
+
+# Observe CrashLoopBackOff
+kubectl get pods
+
+# Debug with describe
+kubectl describe pod crash-test
+
+# Check logs (use --previous for crashed containers)
+kubectl logs crash-test
+kubectl logs crash-test --previous
+
+# Clean up
+kubectl delete pod crash-test
+```
+
+### Multi-Container Pod Testing
+
+#### 1. Sidecar Pattern with Shared Volume
+```bash
+# Apply multi-container pod
+kubectl apply -f multicontainer.yaml
+kubectl get pods -o wide
+
+# Verify both containers running
+kubectl get pod multicontainer \
+  -o jsonpath='{.status.containerStatuses[*].name}'
+
+# Check shared network (same IP)
+kubectl exec -it multicontainer -c webcontainer -- hostname -i
+kubectl exec -it multicontainer -c sidecarcontainer -- hostname -i
+
+# Check shared volume
+kubectl exec -it multicontainer -c webcontainer -- ls /usr/share/nginx/html
+kubectl exec -it multicontainer -c sidecarcontainer -- ls /var/log
+
+# Monitor sidecar logs
+kubectl logs multicontainer -c sidecarcontainer -f
+```
+
+#### 2. Port Forwarding
+```bash
+# Forward pod port to localhost
+kubectl port-forward pod/multicontainer 8080:80
+
+# Test in browser: http://127.0.0.1:8080
+# Keep terminal open for forwarding
+```
+
+### Networking & Service Testing
+
+#### 1. NodePort Service
+```bash
+# Create deployment
+kubectl create deployment web --image=nginx
+
+# Expose as NodePort
+kubectl expose deployment web --type=NodePort --port=80
+
+# Get service details
+kubectl get svc
+
+# Access via worker node IP
+multipass info k8s-worker-node  # Get IP
+curl http://<WORKER-IP>:<NODEPORT>
+```
+
+### Common Troubleshooting Scenarios
+
+#### 1. kubectl Connection Issues
+```bash
+# Symptom: localhost:8080 refused
+# Fix: Set kubeconfig
+export KUBECONFIG=~/.kube/multipass-admin.conf
+
+# Test: kubectl get nodes should work instantly
+```
+
+#### 2. Multipass VM Networking Issues
+```bash
+# Symptom: SSH timeout to VM
+multipass shell k8s-control-plane
+# shell failed: ssh connection failed: 'Timeout connecting to 192.168.64.2'
+
+# Fix: Hard restart VM
+multipass stop k8s-control-plane
+multipass start k8s-control-plane
+multipass shell k8s-control-plane
+```
+
+#### 3. Pod Stuck in ContainerCreating
+```bash
+# Debug: Describe shows root cause
+kubectl describe pod <pod-name>
+
+# Common causes:
+# - Image pull failure
+# - CNI network issues
+# - Resource constraints
+```
+
+#### 4. YAML Validation Errors
+```bash
+# Use --validate=false to bypass client-side validation
+kubectl apply -f file.yaml --validate=false
+```
+
+### Testing Workflow Checklist
+
+- [ ] Multipass VMs running: `multipass list`
+- [ ] kubectl configured: `export KUBECONFIG=~/.kube/multipass-admin.conf`
+- [ ] Cluster healthy: `kubectl get nodes` (all Ready)
+- [ ] Test basic pod: `kubectl run test-pod --image=nginx --restart=Never`
+- [ ] Test multi-container: `kubectl apply -f multicontainer.yaml`
+- [ ] Test networking: `kubectl port-forward` or NodePort
+- [ ] Test CrashLoopBackOff: Create failing pod and debug
+- [ ] Clean up: `kubectl delete` all test resources
+
+### Quick Commands Reference
+```bash
+# Status checks
+kubectl get nodes
+kubectl get pods -o wide
+kubectl get svc
+
+# Debugging
+kubectl describe pod <name>
+kubectl logs <pod> [--previous]
+kubectl exec -it <pod> -- sh
+
+# Networking
+kubectl port-forward pod/<pod> 8080:80
+kubectl expose deployment <name> --type=NodePort
+
+# Cleanup
+kubectl delete pod,svc,deployment --all
+```
     
 ## Monitoring Kubernetes Cluster with SSH, Prometheus and Grafana <a name="prometheus_grafana"></a>
        
