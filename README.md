@@ -1040,16 +1040,77 @@ sensible-browser http://127.0.0.1:45771/api/v1/namespaces/kubernetes-dashboard/s
 
 ## Local Testing Guide: Multipass + kubectl <a name="local_testing"></a>
 
-### Prerequisites for Local Testing
+### 🚀 Complete Local Setup (Step-by-Step)
 
-#### 1. Multipass Cluster Setup
-- Control plane: `k8s-control-plane` (IP: 192.168.64.2)
-- Worker node: `k8s-worker-node` (IP: 192.168.64.3)
-- CNI: Flannel
-- Kubernetes: v1.29.15
-
-#### 2. kubectl Configuration (CRITICAL)
+#### Step 1: Install Prerequisites on macOS
 ```bash
+# Install Homebrew (if not installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install required tools
+brew install kubectl multipass samba
+brew tap hashicorp/tap
+brew install hashicorp/tap/hashicorp-vagrant
+
+# Verify installations
+kubectl version --client
+multipass version
+```
+
+#### Step 2: Create Kubernetes Cluster with Multipass
+```bash
+# Create control plane VM
+multipass launch --name k8s-control-plane \
+  --cpus 2 --memory 2G --disk 5G 22.04
+
+# Create worker node VM
+multipass launch --name k8s-worker-node \
+  --cpus 2 --memory 2G --disk 5G 22.04
+
+# Verify VMs are running
+multipass list
+```
+
+#### Step 3: Setup Kubernetes in VMs
+```bash
+# Download and run the setup script on control plane
+multipass shell k8s-control-plane
+wget https://raw.githubusercontent.com/yukinakanaka/kubernetes-on-apple-silicon-with-multipass/main/setup.sh
+chmod +x setup.sh
+./setup.sh
+
+# Initialize cluster (on control plane)
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+
+# Setup kubectl (on control plane)
+mkdir -p $HOME/.kube
+sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+# Install Flannel CNI
+kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+
+# Get join command (copy this output)
+kubeadm token create --print-join-command
+```
+
+#### Step 4: Join Worker Node
+```bash
+# Switch to worker VM and run the join command
+multipass shell k8s-worker-node
+wget https://raw.githubusercontent.com/yukinakanaka/kubernetes-on-apple-silicon-with-multipass/main/setup.sh
+chmod +x setup.sh
+./setup.sh
+
+# Run the join command from step 3
+sudo kubeadm join 192.168.64.2:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+```
+
+#### Step 5: Configure kubectl on macOS (CRITICAL)
+```bash
+# Copy kubeconfig from control plane to macOS
+multipass transfer k8s-control-plane:/home/ubuntu/.kube/config ~/.kube/multipass-admin.conf
+
 # Set kubeconfig (REQUIRED for all kubectl commands)
 export KUBECONFIG=~/.kube/multipass-admin.conf
 
@@ -1197,16 +1258,89 @@ kubectl describe pod <pod-name>
 kubectl apply -f file.yaml --validate=false
 ```
 
+#### 5. Multipass VM Networking Failure (Most Critical)
+**Symptoms:**
+- `multipass shell k8s-control-plane` → SSH timeout
+- `kubectl get nodes` → TLS handshake timeout
+- VMs show as Running but unreachable
+
+**Root Cause:** Multipass NAT/networking breaks after sleep/wake, VPN changes, or long runtime.
+
+**Fix (Step-by-step):**
+```bash
+# 1. Check VM state
+multipass list
+
+# 2. Hard restart VM (not soft)
+multipass stop k8s-control-plane
+multipass start k8s-control-plane
+
+# 3. Wait 30 seconds, test SSH
+multipass shell k8s-control-plane
+
+# 4. If still fails, restart Multipass daemon
+sudo pkill multipassd
+open -a Multipass
+
+# 5. Recreate cluster if needed
+multipass delete k8s-control-plane k8s-worker-node --purge
+# Then rerun setup steps 2-5 above
+```
+
+#### 6. Cluster Maintenance & Recovery
+```bash
+# Check cluster health
+kubectl get nodes
+kubectl get pods -A
+
+# View cluster events
+kubectl get events --sort-by=.metadata.creationTimestamp
+
+# Check system pods
+kubectl get pods -n kube-system
+
+# Restart cluster components (advanced)
+kubectl -n kube-system delete pod kube-apiserver-k8s-control-plane
+kubectl -n kube-system delete pod kube-controller-manager-k8s-control-plane
+kubectl -n kube-system delete pod kube-scheduler-k8s-control-plane
+```
+
+### Automated Testing
+```bash
+# Run comprehensive cluster test
+./test-cluster.sh
+```
+
+This script automatically tests:
+- kubectl configuration
+- Node readiness
+- Pod creation/deletion
+- CNI (Flannel) health
+- Cluster responsiveness
+
+### Sample YAML Files for Testing
+```bash
+# Clone or download sample YAML files
+ls labs/pod/  # Contains multicontainer.yaml, pod1.yaml, crash-test-pod.yaml
+
+# Quick test files
+kubectl apply -f labs/pod/pod1.yaml  # Basic nginx pod
+kubectl apply -f labs/pod/multicontainer.yaml  # Sidecar pattern
+kubectl apply -f labs/pod/crash-test-pod.yaml  # CrashLoopBackOff demo
+```
+
 ### Testing Workflow Checklist
 
 - [ ] Multipass VMs running: `multipass list`
 - [ ] kubectl configured: `export KUBECONFIG=~/.kube/multipass-admin.conf`
 - [ ] Cluster healthy: `kubectl get nodes` (all Ready)
+- [ ] Run automated test: `./test-cluster.sh`
 - [ ] Test basic pod: `kubectl run test-pod --image=nginx --restart=Never`
-- [ ] Test multi-container: `kubectl apply -f multicontainer.yaml`
-- [ ] Test networking: `kubectl port-forward` or NodePort
+- [ ] Test multi-container: `kubectl apply -f labs/pod/multicontainer.yaml`
+- [ ] Test networking: `kubectl port-forward pod/multicontainer 8080:80`
+- [ ] Test services: Create NodePort service and access externally
 - [ ] Test CrashLoopBackOff: Create failing pod and debug
-- [ ] Clean up: `kubectl delete` all test resources
+- [ ] Clean up: `kubectl delete pod,svc,deployment --all`
 
 ### Quick Commands Reference
 ```bash
@@ -1226,6 +1360,91 @@ kubectl expose deployment <name> --type=NodePort
 
 # Cleanup
 kubectl delete pod,svc,deployment --all
+```
+
+### Cluster Cleanup & Shutdown
+
+#### When You're Done Testing
+```bash
+# 1. Clean up all resources
+kubectl delete all --all --all-namespaces
+kubectl delete configmaps,secrets --all --all-namespaces
+
+# 2. Stop VMs (keeps them for later)
+multipass stop k8s-control-plane k8s-worker-node
+
+# 3. Complete removal (if done forever)
+multipass delete k8s-control-plane k8s-worker-node --purge
+
+# 4. Clean up local files
+rm -rf ~/.kube/multipass-admin.conf
+```
+
+#### Emergency Cluster Reset
+```bash
+# If cluster is completely broken
+multipass stop k8s-control-plane k8s-worker-node
+multipass delete k8s-control-plane k8s-worker-node --purge
+
+# Recreate from scratch
+multipass launch --name k8s-control-plane --cpus 2 --memory 2G --disk 5G 22.04
+multipass launch --name k8s-worker-node --cpus 2 --memory 2G --disk 5G 22.04
+
+# Rerun setup script on both VMs
+multipass shell k8s-control-plane
+# ... run setup.sh again
+```
+
+### Performance Tips for Local Testing
+
+#### Resource Optimization
+```bash
+# Check VM resource usage
+multipass info k8s-control-plane
+multipass info k8s-worker-node
+
+# Monitor cluster resources
+kubectl top nodes
+kubectl top pods
+```
+
+#### Common Performance Issues
+- **Slow pod startup:** Check image pull times with `kubectl describe pod`
+- **High CPU usage:** Limit pod resources or add more VM CPUs
+- **Disk space:** Monitor with `df -h` in VMs
+- **Memory pressure:** Check with `kubectl top nodes`
+
+### Advanced Testing Scenarios
+
+#### ConfigMap & Secret Testing
+```bash
+# Test ConfigMap injection
+kubectl apply -f labs/configmap/configmap.yaml
+kubectl exec -it configmappod -- env | grep DB
+
+# Test Secret creation
+kubectl create secret generic test-secret --from-literal=key=value
+kubectl get secrets
+```
+
+#### Persistent Volume Testing
+```bash
+# Apply PV/PVC examples
+kubectl apply -f labs/persistentvolume/pv.yaml
+kubectl apply -f labs/persistentvolume/pvc.yaml
+kubectl apply -f labs/persistentvolume/deploy.yaml
+
+# Check storage
+kubectl get pv,pvc
+```
+
+#### Network Policy Testing
+```bash
+# Apply network policies (if using Calico)
+kubectl apply -f network-policy.yaml
+
+# Test connectivity
+kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget --timeout=5 <other-pod-ip>
 ```
     
 ## Monitoring Kubernetes Cluster with SSH, Prometheus and Grafana <a name="prometheus_grafana"></a>
