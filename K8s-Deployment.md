@@ -8,16 +8,29 @@ This scenario shows:
 - how to show ethernet interfaces of the pod and ping other pods,
 - how to forward ports to see nginx server page using browser.
 
-### Steps
+### Environment Setup
 
-- Run minikube  (in this scenario, K8s runs on WSL2- Ubuntu 20.04) ("minikube start")
+**Prerequisites:** This lab assumes you have a running Kubernetes cluster set up with kubeadm on Multipass VMs.
 
-  ![image](https://user-images.githubusercontent.com/10358317/153183333-371fe598-d5a4-4b86-9b5d-9e33f35063cc.png)
-  
-- Create Yaml file (deployment1.yaml) in your directory and copy the below definition into the file.
-- File: https://github.com/omerbsezer/Fast-Kubernetes/blob/main/labs/deployment/deployment1.yaml
+- Control plane: `k8s-control-plane` (IP: 192.168.64.2)
+- Worker node: `k8s-worker-node` (IP: 192.168.64.3)
+- CNI: Flannel
+- kubectl configured on macOS: `export KUBECONFIG=~/.kube/multipass-admin.conf`
 
+**Verify cluster is ready:**
+```bash
+kubectl get nodes
+kubectl get pods -A
 ```
+
+If you need to set up the cluster first, follow the [complete local setup guide](../QUICKSTART.md).
+  
+### Step 1: Create Deployment YAML
+
+Create a deployment YAML file:
+
+```bash
+cat <<'EOF' > deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,68 +39,212 @@ metadata:
     team: development
 spec:
   replicas: 3
-  selector:                        # deployment selector
-    matchLabels:                   # deployment selects "app:frontend" pods, monitors and traces these pods 
-      app: frontend                # if one of the pod is killed, K8s looks at the desire state (replica:3), it recreats another pods to protect number of replicas
+  selector:
+    matchLabels:
+      app: frontend
   template:
     metadata:
-      labels:                      # pod labels, if the deployment selector is same with these labels, deployment follows pods that have these labels         
-        app: frontend              # key: value        
-    spec:                                   
+      labels:
+        app: frontend
+    spec:
       containers:
-      - name: nginx                
-        image: nginx:latest        # image download from DockerHub
+      - name: nginx
+        image: nginx:latest
         ports:
-        - containerPort: 80        # open following ports
+        - containerPort: 80
+EOF
 ```
 
-![image](https://user-images.githubusercontent.com/10358317/154119883-5ffcaaaa-572e-427e-b6d6-65e3a8723121.png)
+**Apply the deployment:**
+```bash
+kubectl apply -f deployment.yaml
+```
+
+**Check deployment status:**
+```bash
+kubectl get deployments
+kubectl describe deployment firstdeployment
+```
+
+**Note:** If pods show 0/3 READY initially, this is normal. The scheduler needs time to create and schedule the pods. Continue with scaling commands.
 
 
-- Create deployment and list the deployment's pods:
+### Step 2: Scale the Deployment
 
-![image](https://user-images.githubusercontent.com/10358317/153439583-c445b070-ac27-4838-8943-466261abf635.png)
+**Scale up to 5 replicas:**
+```bash
+kubectl scale deployment firstdeployment --replicas=5
+kubectl get deployment firstdeployment
+```
 
-- Delete one of the pod, then K8s automatically creates new pod:
+**Scale down to 3 replicas:**
+```bash
+kubectl scale deployment firstdeployment --replicas=3
+kubectl get deployment firstdeployment
+```
 
-![image](https://user-images.githubusercontent.com/10358317/153440362-a95dbc41-2cc0-4ec6-8830-8924f3c4a2f7.png)
+**Monitor pods in real-time:**
+```bash
+kubectl get pods -l app=frontend -w
+```
 
-- Scale up to 5 replicas:
+### Step 3: Self-Healing Demonstration
 
-![image](https://user-images.githubusercontent.com/10358317/153440932-39f98de1-c129-4d7d-a4e6-79acbed070ea.png)
+**Delete a pod to trigger self-healing:**
+```bash
+# Get pod names
+kubectl get pods -l app=frontend
 
-- Scale down to 3 replicas:
+# Delete one pod (replace with actual pod name)
+kubectl delete pod firstdeployment-xxxxx-xxxxx
 
-![image](https://user-images.githubusercontent.com/10358317/153441111-558460c7-e35e-4db3-9028-50b6c9149043.png)
+# Watch Kubernetes recreate it automatically
+kubectl get pods -l app=frontend -w
+```
 
-- Get more information about pods (ip, node):
+**Expected result:** A new pod is automatically created to maintain the desired replica count.
 
-![image](https://user-images.githubusercontent.com/10358317/153442941-da17b07e-ad14-49ae-84b3-d9902535f9a7.png)
+### Step 4: Troubleshooting Pod Creation Issues
 
+If pods remain in ContainerCreating status or don't appear:
 
-- Connect one of the pod with bash:
+**Check pod status:**
+```bash
+kubectl get pods -l app=frontend -o wide
+kubectl describe pod <pod-name>
+```
 
-![image](https://user-images.githubusercontent.com/10358317/153442294-efb4dfa5-0753-404c-b1bf-896a8d8ed436.png)
+**Common issues:**
+- **Image pull errors:** Check if nginx:latest can be pulled
+- **Resource constraints:** Insufficient CPU/memory on nodes
+- **Node scheduling issues:** Check node status with `kubectl describe node`
 
-- To install ifconfig, run: "apt update", "apt install net-tools"
-- To install ping, run: "apt install iputils-ping"
-- Show ethernet interfaces:
+**Force pod recreation:**
+```bash
+kubectl scale deployment firstdeployment --replicas=0
+kubectl scale deployment firstdeployment --replicas=3
+```
 
-![image](https://user-images.githubusercontent.com/10358317/153442647-32ea74cd-dd46-4631-b896-f90ec1afb1a3.png)
+### Step 5: Get Pod Information
 
-- Ping other pods:
+**List pods with detailed information:**
+```bash
+kubectl get pods -l app=frontend -o wide
+```
 
-![image](https://user-images.githubusercontent.com/10358317/153443214-d0e3dc55-e4ef-449a-8b9e-35a45ecb2675.png)
+**Describe a specific pod:**
+```bash
+kubectl describe pod <pod-name>
+```
 
-- Port-forward from one of the pod to host (8085:80):
+### Step 6: Connect to Pod Shell
 
-![image](https://user-images.githubusercontent.com/10358317/153443668-18071c34-0e80-4ecd-a3e9-ae9570bd9d7d.png)
+**Get a pod name and connect:**
+```bash
+POD=$(kubectl get pods -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it $POD -- sh
+```
 
-- On the browser, goto http://127.0.0.1:8085/
+**Inside the pod, install networking tools:**
+```bash
+apt update
+apt install -y iputils-ping net-tools
+```
 
-![image](https://user-images.githubusercontent.com/10358317/153443803-709fdf31-7d16-4268-a1f1-8fc822abc471.png)
+**Check network interfaces:**
+```bash
+ifconfig
+# or
+ip addr show
+```
 
-- Delete deployment:
+**Check pod networking:**
+```bash
+# Show pod IP
+hostname -i
 
-![image](https://user-images.githubusercontent.com/10358317/153444098-e52f2cde-3fd2-4606-b68c-89e6f9194398.png)
+# Ping other pods (get IPs from kubectl get pods -o wide)
+ping <other-pod-ip>
+
+# Check routing
+ip route show
+```
+
+**Check pod identity:**
+```bash
+hostname
+whoami
+ps aux
+```
+
+### Step 7: Port Forwarding
+
+**Forward pod port to localhost:**
+```bash
+# Forward from localhost:8085 to pod port 80
+kubectl port-forward pod/$POD 8085:80
+```
+
+**Test the connection:**
+- Open browser: http://127.0.0.1:8085
+- You should see the nginx welcome page
+- Keep the terminal open for forwarding
+
+**Alternative: Forward to all deployment pods:**
+```bash
+# This forwards to any pod matching the label
+kubectl port-forward deployment/firstdeployment 8085:80
+```
+
+### Step 8: Deployment Management
+
+**Check deployment rollout status:**
+```bash
+kubectl rollout status deployment/firstdeployment
+```
+
+**View deployment history:**
+```bash
+kubectl rollout history deployment/firstdeployment
+```
+
+**Update deployment (rolling update):**
+```bash
+kubectl set image deployment/firstdeployment nginx=nginx:alpine
+kubectl rollout status deployment/firstdeployment
+```
+
+**Rollback if needed:**
+```bash
+kubectl rollout undo deployment/firstdeployment
+```
+
+### Step 9: Cleanup
+
+**Delete the deployment:**
+```bash
+kubectl delete deployment firstdeployment
+kubectl delete -f deployment.yaml
+```
+
+**Verify cleanup:**
+```bash
+kubectl get deployments
+kubectl get pods
+```
+
+## Key Concepts Learned
+
+✅ **Deployment vs Pod:** Deployments manage ReplicaSets which manage Pods
+✅ **Self-healing:** Kubernetes automatically recreates pods to maintain desired state
+✅ **Scaling:** Horizontal scaling with replica changes
+✅ **Pod networking:** Each pod gets unique IP, can communicate across nodes
+✅ **Port forwarding:** Access pod services from localhost
+✅ **Rolling updates:** Zero-downtime updates with rollback capability
+
+## Next Steps
+
+- [ConfigMap Lab](../K8s-Configmap.md) - Inject configuration
+- [Secret Lab](../K8s-Secret.md) - Handle sensitive data
+- [Service Lab](../K8s-Service-App.md) - Load balancing and discovery
 
