@@ -72,6 +72,7 @@ This repo covers Kubernetes objects' and components' details (Kubectl, Pod, Depl
 - [Helm: Kuberbetes Package Manager](#helm)
 - [Kubernetes Commands Cheatsheet](#cheatsheet)
 - [Helm Commands Cheatsheet](#helm_cheatsheet)
+- [QUICKSTART.md: 5-Minute Setup](https://github.com/omerbsezer/Fast-Kubernetes/blob/main/QUICKSTART.md)
 - [Local Testing Guide: Multipass + kubectl](#local_testing)
 - [Kubernetes Cluster Setup: Kubeadm, Containerd, Multipass](#cluster_setup)
 - [Monitoring Kubernetes Cluster with SSH, Prometheus and Grafana](#prometheus_grafana)
