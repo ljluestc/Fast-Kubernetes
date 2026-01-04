@@ -1,27 +1,57 @@
-# Fast Kubernetes — Agent Guide
-
-## Project Overview
-**Fast Kubernetes** is a comprehensive educational resource and documentation repository for learning and mastering Kubernetes. It contains detailed guides, labs, and scripts for setting up and managing K8s clusters.
-
-## Structure
-- **Guides**: Markdown files (`K8s-*.md`) covering Pods, Deployments, Services, Ingress, etc.
-- **Labs**: `labs/` directory containing practical exercises.
-- **Scripts**: 
-  - `create_real_cluster/`: Scripts for setting up real clusters.
-  - `test-cluster.sh`: Utility to validating cluster state.
-- **Quickstarts**: `QUICKSTART.md`, `Local-Testing-Guide.md`.
-
-## Content Highlights
-- **Core Concepts**: Pods, Services, Deployments, ConfigMaps.
-- **Advanced**: Helm, Monitoring (Prometheus/Grafana), GitOps.
-- **Cheatsheets**: `KubernetesCommandCheatSheet.md`, `HelmCheatsheet.md`.
-
-## Usage
-- This is primarily a **documentation** repo.
-- **Testing**: `test-cluster.sh` can be used to verify a running cluster against the expected configurations.
-- **Validation**: Ensure all YAML examples in `labs/` are valid Kubernetes manifests.
-
-## Development Conventions
-- **Format**: Clear, structured Markdown.
-- **Accuracy**: Code snippets must be executable against a standard K8s cluster (minikube/kind).
-- **Style**: Educational tone, problem-solution format.
+# AGENTS.md
+ 
+ ## Project overview
+ Fast-Kubernetes is a documentation-first repository: it contains Markdown guides, hands-on labs, and scripts related to Kubernetes.
+ 
+ The repo does not have a conventional “build” step; the primary output is documentation and runnable examples.
+ 
+ ## Key files and directories
+ - `README.md`: main documentation (includes a large table of contents and links)
+ - `QUICKSTART.md`: quickstart
+ - `Local-Testing-Guide.md`: local testing guide
+ - `K8s-*.md`: topic guides and labs (Pods, Deployments, Services, etc.)
+ - `labs/`: hands-on exercise material
+ - `create_real_cluster/`: cluster creation resources
+ - `test-cluster.sh`: kubectl-based smoke test for a running cluster
+ - `KubernetesCommandCheatSheet.md`, `HelmCheatsheet.md`: command references
+ 
+ ## Technology stack
+ - Markdown documentation
+ - Shell scripting (`test-cluster.sh`)
+ - Kubernetes tooling is assumed for running examples: `kubectl` and access to a cluster
+ 
+ ## How the repo is organized
+ - Most guides are written as self-contained Markdown files.
+ - The `README.md` links to guides and labs rather than duplicating everything.
+ - The `labs/` directory contains practical examples; verify them with a real cluster.
+ 
+ ## Validation and testing
+ 
+ ### Smoke test a cluster
+ `test-cluster.sh` validates that:
+ - `kubectl` is configured (`kubectl cluster-info`)
+ - nodes exist and are Ready
+ - a simple BusyBox pod can be created and executed
+ - Flannel CNI pods are healthy (if `kube-flannel` namespace exists)
+ 
+ Run:
+ - `./test-cluster.sh`
+ 
+ Notes:
+ - The script expects `kubectl` to work against your target cluster.
+ - It suggests setting `KUBECONFIG=~/.kube/multipass-admin.conf` for the Multipass guide.
+ 
+ ### Documentation correctness
+ When editing docs:
+ - Ensure kubectl commands match current Kubernetes behavior.
+ - Prefer copy/pastable commands.
+ - If you add YAML manifests, validate them with `kubectl apply --dry-run=client -f <file>` (when feasible).
+ 
+ ## Writing / contribution conventions
+ - Keep an educational tone consistent with the existing docs.
+ - Prefer “concept → command/example → expected result/troubleshooting”.
+ - Avoid environment-specific assumptions unless the guide is explicitly for that environment.
+ 
+ ## Security considerations
+ - When documenting cluster setup, avoid encouraging insecure defaults (e.g., overly permissive RBAC) without clearly labeling them as unsafe.
+ - Remind readers to clean up resources created by labs to avoid unexpected cloud costs.
